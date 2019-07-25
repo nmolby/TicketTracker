@@ -1,7 +1,7 @@
 import requests
 import time
-import openpyxl
 import random
+import pyodbc
 
 class Game:
     def __init__(self, homeTeamId, awayTeamId, dateTime, gameId):
@@ -12,11 +12,25 @@ class Game:
 
 randomTimings = [.15, .2, .25, .22331, .454, .5, .5643, .6543, .73432, .8423]
 
-def getTeamIds(wb):
-    teamSheet = wb["TeamIds"]
+def connect():
+    server = 'ticket-tracker.database.windows.net'
+    database = 'Ticket Tracker'
+    username = 'nmolby'
+    password = 'Il0veMicr0s0ft'
+    driver = '{ODBC Driver 17 for SQL Server}'
+    cnxn = pyodbc.connect(
+        'DRIVER=' + driver + ';SERVER=' + server + ';PORT=1433;DATABASE=' + database + ';UID=' + username + ';PWD=' + password)
+    cnxn.autocommit = True
+    cursor = cnxn.cursor()
+    return cursor
+
+def getTeamIds(cursor):
     teamDict = {}
-    for row in teamSheet[2:31]:
-        teamDict[row[0].value] = row[1].value
+    cursor.execute("SELECT * FROM Teams")
+    row = cursor.fetchone()
+    while row:
+        teamDict[row[0]] = row[1]
+        row = cursor.fetchone()
     return teamDict
 
 def getGames(teamId):
@@ -64,24 +78,8 @@ def getGames(teamId):
         games.extend(getGamesByStart(listingStart, teamId))
     return games
 
-def printGameAtCell(game: Game, rowNum: int, sheet):
-    row = sheet[rowNum]
-    row[0].value = game.gameId
-    row[1].value = game.homeTeamId
-    row[2].value = game.awayTeamId
-    row[3].value = game.dateTime
-
-def printHeaders(sheet):
-    from openpyxl.styles import Font
-
-    sheet["A1"].value = "Game Id"
-    sheet["A1"].font = Font(bold=True)
-    sheet["B1"].value = "Home Team Id"
-    sheet["B1"].font = Font(bold=True)
-    sheet["C1"].value = "Away Team Id"
-    sheet["C1"].font = Font(bold=True)
-    sheet["D1"].value = "Date and Time"
-    sheet["D1"].font = Font(bold=True)
+def addGameToTable(game: Game, cursor):
+    cursor.execute(f"INSERT INTO [Games] ([game_id],[home_team_id],[away_team_id],[date_time]) VALUES ('{game.gameId}', '{game.homeTeamId}', '{game.awayTeamId}', '{game.dateTime}')")
 
 def getGamesByStart(listingStart, teamId):
 
@@ -179,19 +177,13 @@ def getListings(eventId, referer):
 
 #getListings('103822145', 'https://www.stubhub.com/cleveland-indians-tickets-cleveland-indians-cleveland-progressive-field-7-30-2019/event/103822145/?sort=price+asc')
 def initialRun():
-    wb = openpyxl.load_workbook(filename="TicketTracker.xlsx")
-    teamDict = getTeamIds(wb)
+    cursor = connect()
+    teamDict = getTeamIds(cursor)
     for teamId in teamDict:
-        try:
-            time.sleep(random.choice(randomTimings))
-            gamesForTeam = getGames(teamId)
-            teamSheet = wb.create_sheet(teamDict[teamId])
-            printHeaders(teamSheet)
-            for i in range(2, len(gamesForTeam) + 2):
-                printGameAtCell(gamesForTeam[i - 2], i, teamSheet)
-            wb.save("TicketTracker.xlsx")
-        except:
-            print("Failed for " + str(teamId))
-
+        time.sleep(random.choice(randomTimings))
+        gamesForTeam = getGames(teamId)
+        for game in gamesForTeam:
+            addGameToTable(game, cursor)
+        print("Failed for " + str(teamId))
 
 initialRun()
