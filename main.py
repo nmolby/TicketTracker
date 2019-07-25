@@ -1,5 +1,7 @@
 import requests
 import time
+import openpyxl
+import random
 
 class Game:
     def __init__(self, homeTeamId, awayTeamId, dateTime, gameId):
@@ -8,6 +10,14 @@ class Game:
         self.dateTime = dateTime
         self.gameId = gameId
 
+randomTimings = [.15, .2, .25, .22331, .454, .5, .5643, .6543, .73432, .8423]
+
+def getTeamIds(wb):
+    teamSheet = wb["TeamIds"]
+    teamDict = {}
+    for row in teamSheet[2:31]:
+        teamDict[row[0].value] = row[1].value
+    return teamDict
 
 def getGames(teamId):
     params = (
@@ -54,6 +64,24 @@ def getGames(teamId):
         games.extend(getGamesByStart(listingStart, teamId))
     return games
 
+def printGameAtCell(game: Game, rowNum: int, sheet):
+    row = sheet[rowNum]
+    row[0].value = game.gameId
+    row[1].value = game.homeTeamId
+    row[2].value = game.awayTeamId
+    row[3].value = game.dateTime
+
+def printHeaders(sheet):
+    from openpyxl.styles import Font
+
+    sheet["A1"].value = "Game Id"
+    sheet["A1"].font = Font(bold=True)
+    sheet["B1"].value = "Home Team Id"
+    sheet["B1"].font = Font(bold=True)
+    sheet["C1"].value = "Away Team Id"
+    sheet["C1"].font = Font(bold=True)
+    sheet["D1"].value = "Date and Time"
+    sheet["D1"].font = Font(bold=True)
 
 def getGamesByStart(listingStart, teamId):
 
@@ -109,7 +137,6 @@ def getGamesByStart(listingStart, teamId):
         someGames.append(newGame)
     return someGames
 
-
 def getListings(eventId, referer):
 
     headers = {
@@ -141,7 +168,7 @@ def getListings(eventId, referer):
     listings = response['listing']
     numListings = int(response['totalListings'])
     for listingStart in range(100, numListings, 100):
-        time.sleep(.5)
+        time.sleep(random.choice(randomTimings))
         params['start'] = listingStart
         tempResponse = requests.get('https://www.stubhub.com/bfx/api/search/inventory/v2/listings', headers=headers,
                                     params=params).json()
@@ -150,10 +177,21 @@ def getListings(eventId, referer):
     for listing in listings:
         print(listing['sectionName'] + " - $" + str(listing['price']['amount']))
 
-
 #getListings('103822145', 'https://www.stubhub.com/cleveland-indians-tickets-cleveland-indians-cleveland-progressive-field-7-30-2019/event/103822145/?sort=price+asc')
 def initialRun():
-    games = getGames(4882)
-    for game in games:
-        print(game.awayTeamId, "at", game.homeTeamId, "at", game.dateTime, "and game id =", game.gameId)
+    wb = openpyxl.load_workbook(filename="TicketTracker.xlsx")
+    teamDict = getTeamIds(wb)
+    for teamId in teamDict:
+        try:
+            time.sleep(random.choice(randomTimings))
+            gamesForTeam = getGames(teamId)
+            teamSheet = wb.create_sheet(teamDict[teamId])
+            printHeaders(teamSheet)
+            for i in range(2, len(gamesForTeam) + 2):
+                printGameAtCell(gamesForTeam[i - 2], i, teamSheet)
+            wb.save("TicketTracker.xlsx")
+        except:
+            print("Failed for " + str(teamId))
+
+
 initialRun()
